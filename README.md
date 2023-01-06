@@ -17,7 +17,7 @@ pip install swergio[toolbox]
 For the latest version from github:
 
 ```
-pip install toolbox !!!!!!!!! 
+pip install git+https://github.com/swergio/toolbox.git
 ```
 
 ## Current Content

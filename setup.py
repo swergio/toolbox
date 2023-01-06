@@ -7,11 +7,11 @@ setuptools.setup(
     name="swergio_toolbox",
     version="0.0.1",
     author="Ishmagurca",
-    author_email="author@example.com",
+    # author_email="author@example.com",
     description="Swergio Toolbox Package",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    #url="https://github.com/pypa/sampleproject",
+    url="https://github.com/swergio/toolbox",
     #project_urls={
     #    "Bug Tracker": "https://github.com/pypa/sampleproject/issues",
     #},
