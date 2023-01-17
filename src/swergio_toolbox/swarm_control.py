@@ -9,20 +9,23 @@ class Component():
     :param filepath: The file path of the component.
     :type filepath: str
 
-    :param projectpath: The project path of the component, if applicable.
-    :type projectpath: str
+    :param envpath: Path to environment used to execute python or julia code. 
+    :type envpath: str
 
     :param delay: The delay in seconds before starting the component.
     :type delay: int or float
 
-    :param terminal: Whether to start the component in a terminal or not.
-    :type terminal: bool
+    :param terminal_cmd: Command used to start the component in a terminal. When None no terminal is used. 
+    :type terminal_cmd: str
+    
+    :param python_cmd: Command to run python file. Default "python".
+    :type python_cmd: str
 
     :ivar filepath: The file path of the component.
     :vartype filepath: str
 
-    :ivar projectpath: The project path of the component, if applicable.
-    :vartype projectpath: str
+    :ivar envpath: Path to environment used to execute python or julia code. 
+    :vartype envpath: str
 
     :ivar delay: The delay in seconds before starting the component.
     :vartype delay: int or float
@@ -30,15 +33,19 @@ class Component():
     :ivar process: The subprocess object representing the running component.
     :vartype process: subprocess.Popen
 
-    :ivar terminal: Whether the component is started in a terminal or not.
-    :vartype terminal: bool
+    :ivar terminal_cmd: Command used to start the component in a terminal. When None no terminal is used. 
+    :vartype terminal_cmd: str
+    
+    :ivar python_cmd: Command to run python file. Default "python".
+    :vartype python_cmd: str
     """
-    def __init__(self, filepath, projectpath = None, delay = None, terminal = True ):
+    def __init__(self, filepath, envpath = None, delay = None, terminal_cmd = None, python_cmd = "python" ):
         self.filepath = filepath
-        self.projectpath = projectpath
+        self.envpath = envpath
         self.delay = delay
         self.process = None 
-        self.terminal = terminal
+        self.terminal_cmd = terminal_cmd
+        self.python_cmd = python_cmd
         
     def start(self):
         """
@@ -48,22 +55,25 @@ class Component():
         :rtype: int or float or None
         """
         if self.filepath.split('.')[-1] == "py":
-            lang = "python3"
+            lang = self.python_cmd
         elif self.filepath.split('.')[-1] == "jl":
             lang = "julia"
         else:
             return None
         
-        if self.projectpath is not None and lang == "julia":
-            if self.projectpath == ".":
-                cmd = [lang,"--project","-i",self.filepath]
-            else:
-                cmd = [lang,"--project",self.projectpath,"-i",self.filepath]
+        if self.envpath is not None:
+            if lang == "julia":
+                if self.envpath == ".":
+                    cmd = [lang,"--project","-i",self.filepath]
+                else:
+                    cmd = [lang,"--project",self.envpath,"-i",self.filepath]
+            elif lang == "python":
+                cmd = [self.envpath + lang,"-i",self.filepath]
         else:
             cmd = [lang,"-i",self.filepath]
         
-        if self.terminal:
-            command = ["xterm", "-fs",  "14", "-fa", "DejaVuSansMono", "-hold", "-e"] + cmd
+        if self.terminal_cmd  is not None:
+            command = self.terminal_cmd.split(" ") + cmd
         else:
             command = cmd
         self.process = subprocess.Popen(command)
@@ -102,13 +112,31 @@ class Swarm():
             config_file = 'swarm.yaml'
         with open(config_file, 'r') as stream:
             self.config = yaml.safe_load(stream)
+        
+        self.julia_envpath = self.config['settings']['julia_envpath'] if 'julia_envpath' in self.config['settings'].keys() else None
+        self.python_envpath = self.config['settings']['python_envpath'] if 'python_envpath' in self.config['settings'].keys() else None
+        self.python_cmd = self.config['settings']['python_cmd'] if 'python_cmd' in self.config['settings'].keys() else "python"
+        self.terminal_cmd = self.config['settings']['terminal_cmd'] if 'terminal_cmd' in self.config['settings'].keys() else None
+        
         self.components = {}
         for k,v in self.config['components'].items():
+            
+            if 'envpath' in v.keys():
+                envpath = envpath
+            else:
+                if v['filepath'].split('.')[-1] == "py" and self.python_envpath is not None:
+                    envpath = self.python_envpath
+                elif v['filepath'].split('.')[-1] == "jl" and self.julia_envpath is not None:
+                    envpath = self.julia_envpath
+                else:
+                    envpath = None
+    
             self.components[k] = Component(
                 v['filepath'],
-                projectpath= v['projectpath'] if 'projectpath' in v.keys() else None,
+                envpath= envpath,
                 delay= v['delay'] if 'delay' in v.keys() else None,
-                terminal= v['terminal'] if 'terminal' in v.keys() else True
+                terminal_cmd= v['terminal_cmd'] if 'terminal_cmd' in v.keys() else self.terminal_cmd,
+                python_cmd = v['python_cmd'] if 'python_cmd' in v.keys() else self.python_cmd,
             )
                 
     def start(self, components = None):
@@ -148,7 +176,7 @@ class Swarm():
             delay = self.components[c].stop()
 
     
-    def add(self,name, filepath,projectpath = None ,delay = None, terminal = True):
+    def add(self,name, filepath,envpath = None ,delay = None, terminal_cmd = None, python_cmd = "python"):
         """
         Add a new component to the swarm.
 
@@ -158,22 +186,36 @@ class Swarm():
         :param filepath: The file path of the new component.
         :type filepath: str
 
-        :param projectpath: The project path of the new component, if applicable.
-        :type projectpath: str
+        :param envpath: Path to environment used to execute python or julia code. 
+        :type envpath: str
 
         :param delay: The delay in seconds before starting the new component.
         :type delay: int or float
 
-        :param terminal: Whether to start the new component in a terminal or not.
-        :type terminal: bool
+        :param terminal_cmd: Command used to start the component in a terminal. When None no terminal is used. If terminal_cmd is "", the terminal_cmd of the swarm will be used.
+        :type terminal_cmd: str
+        
+        :param python_cmd: Command to run python file. Default "python". If python_cmd is "", the python_cmd of the swarm will be used.
+        :type python_cmd: str
 
         :return: None
         """
+        if envpath is not None:
+            envpath = envpath
+        else:
+            if filepath.split('.')[-1] == "py" and self.python_envpath is not None:
+                envpath = self.python_envpath
+            elif filepath.split('.')[-1] == "jl" and self.julia_envpath is not None:
+                envpath = self.julia_envpath
+            else:
+                envpath = None
+                
         self.components[name] = Component(
                 filepath,
-                projectpath= projectpath,
+                envpath= envpath,
                 delay= delay,
-                terminal= terminal
+                terminal_cmd= terminal_cmd if terminal_cmd != "" else self.terminal_cmd,
+                python_cmd = python_cmd if python_cmd != "" else self.python_cmd
             )
 
     
